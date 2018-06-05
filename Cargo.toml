@@ -1,0 +1,21 @@
+[package]
+name = "swish"
+version = "0.1.0"
+description = "API bindings for the Swish Payment API"
+authors = ["Jesper Håkansson <jesper@jesperh.se>"]
+license = "MIT/Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/drager/swish-rs"
+documentation = "https://docs.rs/swish"
+keywords = ["swish", "payments", "api"]
+categories = ["api-bindings"]
+
+[dependencies]
+hyper = "0.11"
+tokio-core = "0.1"
+futures = "0.1.14"
+hyper-tls = "0.1.1"
+native-tls = "0.1.2"
+serde = "1.0.8"
+serde_json = "1.0.2"
+serde_derive = "1.0.8"
