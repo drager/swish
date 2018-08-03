@@ -21,12 +21,14 @@ fn get_client_and_core() -> Result<(client::SwishClient, Core), error::SwishClie
                 .into_os_string()
                 .to_str()
                 .map(|root_cert_path_string| {
-                         client::SwishClient::new("1231181189",
-                                                  cert_path_string,
-                                                  root_cert_path_string,
-                                                  "swish",
-                                                  handle)
-                     })
+                    client::SwishClient::new(
+                        "1231181189",
+                        cert_path_string,
+                        root_cert_path_string,
+                        "swish",
+                        handle,
+                    )
+                })
         })
         .unwrap();
 
@@ -98,11 +100,8 @@ fn test_get_payment() {
     let created_payment: Result<client::CreatedPayment, error::SwishClientError> =
         core.run(created_payment);
 
-    let payment: Result<client::Payment, error::SwishClientError> =
-        created_payment.and_then(|created_payment| {
-                                     core.run(client.get_payment(created_payment.id.as_str()))
-                                 });
-
+    let payment: Result<client::Payment, error::SwishClientError> = created_payment
+        .and_then(|created_payment| core.run(client.get_payment(created_payment.id.as_str())));
 
     assert!(payment.is_ok());
     let ok_payment = payment.unwrap();
@@ -184,10 +183,8 @@ fn test_get_refund() {
             refund
         });
 
-    let gotten_refund =
-        created_refund.and_then(|created_refund| {
-                                    core.run(client.get_refund(created_refund.id.as_str()))
-                                });
+    let gotten_refund = created_refund
+        .and_then(|created_refund| core.run(client.get_refund(created_refund.id.as_str())));
 
     assert!(gotten_refund.is_ok());
     let ok_refund = gotten_refund.unwrap();

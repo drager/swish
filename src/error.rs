@@ -26,12 +26,12 @@ impl fmt::Display for SwishClientError {
             SwishClientError::Json(ref err) => write!(f, ": {}", err),
             SwishClientError::Parse(ref err) => write!(f, ": {}", err),
             SwishClientError::Uri(ref err) => write!(f, ": {}", err),
-            SwishClientError::ErrorCollection(ref err) => {
-                write!(f,
-                       ": {}",
-                       err.iter()
-                           .fold(String::new(), |acc, curr| acc + &curr.to_string() + ", "))
-            }
+            SwishClientError::ErrorCollection(ref err) => write!(
+                f,
+                ": {}",
+                err.iter()
+                    .fold(String::new(), |acc, curr| acc + &curr.to_string() + ", ")
+            ),
         }
     }
 }

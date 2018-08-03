@@ -1,9 +1,9 @@
-extern crate hyper;
-extern crate native_tls;
-extern crate tokio_core;
-extern crate hyper_tls;
-extern crate serde;
 extern crate futures;
+extern crate hyper;
+extern crate hyper_tls;
+extern crate native_tls;
+extern crate serde;
+extern crate tokio_core;
 
 #[macro_use]
 extern crate serde_json;
@@ -16,6 +16,5 @@ pub mod error;
 #[cfg(test)]
 mod tests {
     #[test]
-    fn it_works() {
-    }
+    fn it_works() {}
 }

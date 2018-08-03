@@ -1,25 +1,27 @@
-use std::error;
-use std::fs::File;
-use std::io::Read;
-use std::io;
-use std::str;
-use std::path::Path;
-use std::fmt;
-use futures::{future, Future};
+use error::{RequestError, SwishClientError};
 use futures::stream::Stream;
-use serde_json;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use hyper::{self, Body, Request, Uri};
+use futures::{future, Future};
+use hyper::client::HttpConnector;
+use hyper::header::{
+    ContentLength, ContentType, Formatter, Header, Location as LocationHeader, Raw,
+};
+use hyper::Client as HttpClient;
 use hyper::Method;
 use hyper::StatusCode;
-use hyper::client::HttpConnector;
+use hyper::{self, Body, Request, Uri};
 use hyper_tls::HttpsConnector;
-use hyper::header::{ContentType, ContentLength, Formatter, Header, Raw, Location as LocationHeader};
-use hyper::Client as HttpClient;
+use native_tls::{Certificate, Pkcs12, TlsConnector};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use serde_json;
+use std::error;
+use std::fmt;
+use std::fs::File;
+use std::io;
+use std::io::Read;
+use std::path::Path;
+use std::str;
 use tokio_core::reactor::Handle;
-use native_tls::{TlsConnector, Pkcs12, Certificate};
-use error::{SwishClientError, RequestError};
 
 #[derive(Debug)]
 pub struct SwishClient {
@@ -108,7 +110,7 @@ pub struct PaymentParams<'a> {
 //     }
 // }
 
-#[derive(Debug, Default, Serialize)] 
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefundParams<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -249,12 +251,13 @@ impl SwishClient {
     ///                  })
     ///     });
     /// ```
-    pub fn new(merchant_swish_number: &str,
-               cert_path: &str,
-               root_cert_path: &str,
-               passphrase: &str,
-               handle: Handle)
-               -> Self {
+    pub fn new(
+        merchant_swish_number: &str,
+        cert_path: &str,
+        root_cert_path: &str,
+        passphrase: &str,
+        handle: Handle,
+    ) -> Self {
         SwishClient {
             merchant_swish_number: merchant_swish_number.to_owned(),
             swish_api_url: "https://mss.swicpc.bankgirot.se/swish-cpcapi/api/v1/".to_owned(),
@@ -286,9 +289,10 @@ impl SwishClient {
     ///
     /// let payment = client.create_payment(payment_params);
     /// ```
-    pub fn create_payment<'a>(&'a self,
-                              params: PaymentParams)
-                              -> SwishBoxFuture<'a, CreatedPayment> {
+    pub fn create_payment<'a>(
+        &'a self,
+        params: PaymentParams,
+    ) -> SwishBoxFuture<'a, CreatedPayment> {
         let payment_params = PaymentParams {
             payee_alias: self.merchant_swish_number.as_str(),
             ..params
@@ -303,17 +307,16 @@ impl SwishClient {
 
             let payment = location.and_then(|location| {
                 self.get_payment_id_from_location(location.to_owned())
-                    .map(|payment_id| {
-                             CreatedPayment {
-                                 id: payment_id,
-                                 request_token: request_token,
-                                 location: location,
-                             }
-                         })
+                    .map(|payment_id| CreatedPayment {
+                        id: payment_id,
+                        request_token: request_token,
+                        location: location,
+                    })
             });
 
-            future::result(serde_json::from_value(json!(payment))
-                                              .map_err(|err| SwishClientError::from(err)))
+            future::result(
+                serde_json::from_value(json!(payment)).map_err(|err| SwishClientError::from(err)),
+            )
         });
         Box::new(payment_future)
     }
@@ -371,16 +374,15 @@ impl SwishClient {
 
             let refund = location.and_then(|location| {
                 self.get_payment_id_from_location(location.to_owned())
-                    .map(|refund_id| {
-                             CreatedRefund {
-                                 id: refund_id,
-                                 location: location,
-                             }
-                         })
+                    .map(|refund_id| CreatedRefund {
+                        id: refund_id,
+                        location: location,
+                    })
             });
 
-            future::result(serde_json::from_value(json!(refund))
-                                              .map_err(|err| SwishClientError::from(err)))
+            future::result(
+                serde_json::from_value(json!(refund)).map_err(|err| SwishClientError::from(err)),
+            )
         });
         Box::new(refund_future)
     }
@@ -419,9 +421,9 @@ impl SwishClient {
 
     /// Build a HTTPS client with the root_cert and the client_cert.
     /// Returns a Result that contains the client if it succeeded.
-    fn build_client
-        (&self)
-         -> Result<HttpClient<HttpsConnector<HttpConnector>, Body>, Box<error::Error>> {
+    fn build_client(
+        &self,
+    ) -> Result<HttpClient<HttpsConnector<HttpConnector>, Body>, Box<error::Error>> {
         let root_cert = Certificate::from_der(&self.read_cert(&self.root_cert_path)?)?;
         let client_cert = Pkcs12::from_der(&self.read_cert(&self.cert_path)?, &self.passphrase)?;
 
@@ -450,12 +452,14 @@ impl SwishClient {
     ///
     /// * `path` - A string path
     /// * `params` - Params that implements Serialize which are json sent as the body
-    fn post<'a, T: 'a, P>(&'a self,
-                          path: &str,
-                          params: P)
-                          -> SwishBoxFuture<'a, (String, hyper::Headers)>
-        where T: DeserializeOwned + fmt::Debug,
-              P: Serialize
+    fn post<'a, T: 'a, P>(
+        &'a self,
+        path: &str,
+        params: P,
+    ) -> SwishBoxFuture<'a, (String, hyper::Headers)>
+    where
+        T: DeserializeOwned + fmt::Debug,
+        P: Serialize,
     {
         let future_result: Result<_, SwishClientError> = self.get_uri(path)
             .and_then(|uri| {
@@ -485,7 +489,8 @@ impl SwishClient {
     ///
     /// * `path` - A string path
     fn get<'a, T: 'a>(&'a self, path: &str) -> SwishBoxFuture<'a, T>
-        where T: DeserializeOwned + fmt::Debug
+    where
+        T: DeserializeOwned + fmt::Debug,
     {
         let uri = self.get_uri(path).unwrap();
         let request = Request::new(Method::Get, uri.clone());
@@ -502,7 +507,8 @@ impl SwishClient {
     ///
     /// * `body` - A string body
     fn parse_body<T>(&self, body: &str) -> Result<T, SwishClientError>
-        where T: DeserializeOwned + fmt::Debug
+    where
+        T: DeserializeOwned + fmt::Debug,
     {
         serde_json::from_str(&body).map_err(|err| SwishClientError::from(err))
     }
@@ -531,20 +537,22 @@ impl SwishClient {
     /// Performs the actual request to the Swish API.
     /// Returns a Future with a Tuple that contains the body as a String
     /// and the Response headers.
-    fn perform_swish_api_request<'a>(&'a self,
-                                     request: Request)
-                                     -> SwishBoxFuture<'a, (String, hyper::Headers)> {
-        let client =
-            self.build_client()
-                .expect("The HttpsClient couldn't be built, the certificate is probably wrong");
+    fn perform_swish_api_request<'a>(
+        &'a self,
+        request: Request,
+    ) -> SwishBoxFuture<'a, (String, hyper::Headers)> {
+        let client = self.build_client()
+            .expect("The HttpsClient couldn't be built, the certificate is probably wrong");
         let future = client
             .request(request)
-            .map_err(|err| SwishClientError::from(err))   
+            .map_err(|err| SwishClientError::from(err))
             .and_then(move |response| {
                 let status = response.status();
                 let headers = response.headers().clone();
 
-                response.body().concat2()
+                response
+                    .body()
+                    .concat2()
                     .map_err(|err| SwishClientError::from(err))
                     .and_then(move |body| {
                         let body = str::from_utf8(&body).unwrap();
@@ -561,32 +569,41 @@ impl SwishClient {
                         if !status.is_success() {
                             // Swish can sometimes return an array of errors.
                             // TODO: http_status is wrong, set it to the actually status.
-                            let errors: SwishClientError = match serde_json::from_str::<serde_json::Value>(body) {
-                                Ok(json) => {
-                                    let errors: Vec<_> = json.as_array()
-                                    .into_iter()
-                                    .flat_map(|e| {
-                                        e.iter()
-                                            .flat_map(|err| serde_json::from_value::<RequestError>(err.clone()))
-                                            .map(|request_error| {
-                                                RequestError {http_status_code: status, ..request_error}
+                            let errors: SwishClientError =
+                                match serde_json::from_str::<serde_json::Value>(body) {
+                                    Ok(json) => {
+                                        let errors: Vec<_> = json.as_array()
+                                            .into_iter()
+                                            .flat_map(|e| {
+                                                e.iter()
+                                                    .flat_map(|err| {
+                                                        serde_json::from_value::<RequestError>(
+                                                            err.clone(),
+                                                        )
+                                                    })
+                                                    .map(|request_error| RequestError {
+                                                        http_status_code: status,
+                                                        ..request_error
+                                                    })
+                                                    .map(SwishClientError::from)
+                                                    .collect::<Vec<SwishClientError>>()
                                             })
-                                            .map(SwishClientError::from) 
-                                            .collect::<Vec<SwishClientError>>()
-                                    })
-                                    .collect();
-                                    SwishClientError::from(errors)
-                                }, 
-                                Err(err) => {
-                                    let error = RequestError {
-                                        additional_information: None, code: None, http_status: status, message: err.to_string()
-                                    };
-                                    SwishClientError::from(error)
-                                }
-                            };
-                            return future::err(errors)
+                                            .collect();
+                                        SwishClientError::from(errors)
+                                    }
+                                    Err(err) => {
+                                        let error = RequestError {
+                                            additional_information: None,
+                                            code: None,
+                                            http_status: status,
+                                            message: err.to_string(),
+                                        };
+                                        SwishClientError::from(error)
+                                    }
+                                };
+                            return future::err(errors);
                         }
-                        future::result(Ok((body.to_owned(), headers))) 
+                        future::result(Ok((body.to_owned(), headers)))
                     })
             });
         Box::new(future)
