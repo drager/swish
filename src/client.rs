@@ -1,16 +1,17 @@
+//! # The SwishClient
+//!
+//! This is the client that's used to make calls to the Swish API.
+//!
 use error::{RequestError, SwishClientError};
 use futures::stream::Stream;
 use futures::{future, Future};
 use hyper::client::HttpConnector;
-use hyper::header::{
-    ContentLength, ContentType, Formatter, Header, Location as LocationHeader, Raw,
-};
+use hyper::header::{self, HeaderValue, CONTENT_TYPE, LOCATION};
 use hyper::Client as HttpClient;
-use hyper::Method;
 use hyper::StatusCode;
 use hyper::{self, Body, Request, Uri};
 use hyper_tls::HttpsConnector;
-use native_tls::{Certificate, Pkcs12, TlsConnector};
+use native_tls::{Certificate, Identity, TlsConnector};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json;
@@ -23,6 +24,7 @@ use std::path::Path;
 use std::str;
 use tokio_core::reactor::Handle;
 
+/// The client used to make call to the Swish API.
 #[derive(Debug)]
 pub struct SwishClient {
     merchant_swish_number: String,
@@ -33,6 +35,8 @@ pub struct SwishClient {
     handle: Handle,
 }
 
+/// This is what will be returned when a payment is
+/// successfully created at Swish.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreatedPayment {
     pub id: String,
@@ -40,6 +44,8 @@ pub struct CreatedPayment {
     pub request_token: Option<String>,
 }
 
+/// This is all the data that's returned from the
+/// Swish API when fetching a payment.
 #[derive(Debug, Deserialize, Clone)]
 pub struct Payment {
     pub id: String,
@@ -68,6 +74,7 @@ pub struct Payment {
     pub error_message: Option<String>,
 }
 
+/// The status of an operation.
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 pub enum Status {
     #[serde(rename = "CREATED")]
@@ -78,8 +85,11 @@ pub enum Status {
     Error,
     #[serde(rename = "VALIDATED")]
     Validated,
+    #[serde(rename = "INITIATED")]
+    Initiated,
 }
 
+/// Params used to create a new payment.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentParams<'a> {
@@ -96,20 +106,7 @@ pub struct PaymentParams<'a> {
     pub callback_url: &'a str,
 }
 
-// impl<'a> PaymentParams<'a> {
-//     fn new(payer_alias: &'a str, payee_alias: &'a str, amount: f64, callback_url: &'a str) -> Self {
-//         PaymentParams {
-//             payee_payment_reference: None,
-//             payer_alias: Some(payer_alias),
-//             payee_alias: payee_alias,
-//             amount: amount,
-//             message: None,
-//             currency: Currency::default(),
-//             callback_url: callback_url,
-//         }
-//     }
-// }
-
+/// Params used to create a new refund.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefundParams<'a> {
@@ -127,9 +124,10 @@ pub struct RefundParams<'a> {
     pub callback_url: &'a str,
 }
 
+/// The currency the Swish API supports.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum Currency {
-    // SEK is the only one supported at Swish.
+    /// SEK is currently the only currency supported at Swish.
     SEK,
 }
 
@@ -139,12 +137,16 @@ impl Default for Currency {
     }
 }
 
+/// This will be returned when a refund
+/// is successfully created.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreatedRefund {
     pub id: String,
     pub location: String,
 }
 
+/// This is all the data that's returned
+/// from the Swish API when fetching a refund.
 #[derive(Debug, Deserialize, Clone)]
 pub struct Refund {
     pub id: String,
@@ -175,64 +177,41 @@ pub struct Refund {
     pub additional_information: Option<String>,
 }
 
-/// Custom Header returned by the Swish API
-#[derive(Debug, Clone)]
-struct PaymentRequestTokenHeader(String);
-
-/// Custom Header implementation for the PaymentRequestToken
-/// returned by the Swish API
-impl Header for PaymentRequestTokenHeader {
-    fn header_name() -> &'static str {
-        "PaymentRequestToken"
-    }
-
-    fn parse_header(raw: &Raw) -> hyper::Result<PaymentRequestTokenHeader> {
-        if raw.len() == 1 {
-            let line = &raw[0];
-            // Token is 32 characters.
-            if line.len() == 32 {
-                return Ok(PaymentRequestTokenHeader(String::from_utf8(line.to_vec())?));
-            }
-        }
-        Err(hyper::Error::Header)
-    }
-
-    fn fmt_header(&self, f: &mut Formatter) -> fmt::Result {
-        f.fmt_line(&self.0)
-    }
-}
-
-/// Display implementation for the PaymentRequestToken
-/// returned by the Swish API
-impl fmt::Display for PaymentRequestTokenHeader {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+/// Custom Header returned by the Swish API.
+const PAYMENT_REQUEST_TOKEN: &'static str = "paymentrequesttoken";
 
 /// Type alias for Future used within the SwishClient
 type SwishBoxFuture<'a, T> = Box<Future<Item = T, Error = SwishClientError> + 'a>;
 
 impl SwishClient {
+    /// [`SwishClient`]: struct.SwishClient.html
+    ///
     /// Creates a new SwishClient
     ///
     /// # Arguments
     ///
-    /// * `merchant_swish_number` - The merchants swish number which will receive the payments
-    /// * `cert_path` - The path to the certificate
-    /// * `root_cert_path` - The path to the root certificate
-    /// * `passphrase` - The passphrase to the certificate
-    /// * `handle` - A tokio reactor handle
+    /// * `merchant_swish_number` - The merchants swish number which will receive the payments.
+    /// * `cert_path` - The path to the certificate.
+    /// * `root_cert_path` - The path to the root certificate.
+    /// * `passphrase` - The passphrase to the certificate.
+    /// * `handle` - A tokio reactor handle.
+    ///
+    /// # Returns
+    /// A configured [`SwishClient`].
     ///
     /// # Example
     ///
     /// ```
+    /// extern crate tokio_core;
+    /// extern crate swish;
+    ///
     /// use swish::client::SwishClient;
     /// use tokio_core::reactor::Core;
+    /// use std::env;
     ///
     /// let core = Core::new().unwrap();
     /// let handle = core.handle();
-    /// let current_dir = env::current_dir()?;
+    /// let current_dir = env::current_dir().unwrap();
     /// let cert_path = current_dir.join("./certs/test_cert.p12");
     /// let root_cert_path = current_dir.join("./certs/root_cert.der");
     /// let swish_client = cert_path
@@ -243,7 +222,7 @@ impl SwishClient {
     ///             .into_os_string()
     ///             .to_str()
     ///             .map(|root_cert_path_string| {
-    ///                      client::SwishClient::new("1231181189",
+    ///                      SwishClient::new("1231181189",
     ///                                               cert_path_string,
     ///                                               root_cert_path_string,
     ///                                               "passphrase",
@@ -260,7 +239,7 @@ impl SwishClient {
     ) -> Self {
         SwishClient {
             merchant_swish_number: merchant_swish_number.to_owned(),
-            swish_api_url: "https://mss.swicpc.bankgirot.se/swish-cpcapi/api/v1/".to_owned(),
+            swish_api_url: "https://mss.cpc.getswish.net/swish-cpcapi/api/v1/".to_owned(),
             passphrase: passphrase.to_owned(),
             cert_path: cert_path.to_owned(),
             root_cert_path: root_cert_path.to_owned(),
@@ -268,26 +247,60 @@ impl SwishClient {
         }
     }
 
-    /// Creates a payment with the provided PaymentParams.
-    /// Returns a Future with a CreatedPayment.
+    /// [`PaymentParams`]: struct.PaymentParams.html
+    /// [`CreatedPayment`]: struct.CreatedPayment.html
+    ///
+    /// Creates a payment with the provided [`PaymentParams`].
+    ///
+    /// # Returns
+    /// A Future with a [`CreatedPayment`].
     ///
     /// # Arguments
     ///
-    /// * `params` - PaymentParams
+    /// * `params` - [`PaymentParams`].
     ///
     /// # Example
     ///
     /// ```
-    /// use swish::client::SwishClient;
+    /// extern crate tokio_core;
+    /// extern crate swish;
     ///
-    /// let mut payment_params = client::PaymentParams::default();
+    /// use tokio_core::reactor::Core;
+    /// use std::env;
+    /// use swish::client::{PaymentParams, SwishClient};
+    ///
+    /// let core = Core::new().unwrap();
+    /// let handle = core.handle();
+    /// let current_dir = env::current_dir().unwrap();
+    /// let cert_path = current_dir.join("./tests/test_cert.p12");
+    /// let root_cert_path = current_dir.join("./tests/root_cert.der");
+    /// let swish_client = cert_path
+    ///     .into_os_string()
+    ///     .to_str()
+    ///     .and_then(|cert_path_string| {
+    ///         root_cert_path
+    ///             .into_os_string()
+    ///             .to_str()
+    ///             .map(|root_cert_path_string| {
+    ///                 SwishClient::new(
+    ///                     "1231181189",
+    ///                     cert_path_string,
+    ///                     root_cert_path_string,
+    ///                     "swish",
+    ///                     handle,
+    ///                 )
+    ///             })
+    ///     }).unwrap();
+    ///
+    /// let mut payment_params = PaymentParams::default();
     /// payment_params.amount = 100.00;
     /// payment_params.payee_alias = "1231181189";
     /// payment_params.payee_payment_reference = Some("0123456789");
     /// payment_params.callback_url = "https://example.com/api/swishcb/paymentrequests";
     /// payment_params.message = Some("Kingston USB Flash Drive 8 GB");
     ///
-    /// let payment = client.create_payment(payment_params);
+    /// let payment = swish_client.create_payment(payment_params);
+    ///
     /// ```
     pub fn create_payment<'a>(
         &'a self,
@@ -298,19 +311,22 @@ impl SwishClient {
             ..params
         };
 
-        let response: SwishBoxFuture<'a, (String, hyper::Headers)> =
+        let response: SwishBoxFuture<'a, (String, header::HeaderMap)> =
             self.post::<CreatedPayment, PaymentParams>("paymentrequests", payment_params);
 
         let payment_future = response.and_then(move |(_, headers)| {
-            let location = get_header_as_string::<LocationHeader>(&headers);
-            let request_token = get_header_as_string::<PaymentRequestTokenHeader>(&headers);
+            let location = get_header_as_string(&headers, &LOCATION);
+            let request_token = get_header_as_string(
+                &headers,
+                &header::HeaderName::from_static(PAYMENT_REQUEST_TOKEN),
+            );
 
             let payment = location.and_then(|location| {
                 self.get_payment_id_from_location(location.to_owned())
                     .map(|payment_id| CreatedPayment {
                         id: payment_id,
-                        request_token: request_token,
-                        location: location,
+                        request_token,
+                        location,
                     })
             });
 
@@ -321,8 +337,12 @@ impl SwishClient {
         Box::new(payment_future)
     }
 
-    /// Gets a payment for a given payment_id.
-    /// Returns a Future with a Payment.
+    /// [`Payment`]: struct.Payment.html
+    ///
+    /// Gets a payment for a given `payment_id`.
+    ///
+    /// # Returns
+    /// A Future with a [`Payment`].
     ///
     /// # Arguments
     ///
@@ -331,35 +351,95 @@ impl SwishClient {
     /// # Example
     ///
     /// ```
+    /// extern crate tokio_core;
+    /// extern crate swish;
+    ///
+    /// use tokio_core::reactor::Core;
+    /// use std::env;
     /// use swish::client::SwishClient;
     ///
+    /// let core = Core::new().unwrap();
+    /// let handle = core.handle();
+    /// let current_dir = env::current_dir().unwrap();
+    /// let cert_path = current_dir.join("./tests/test_cert.p12");
+    /// let root_cert_path = current_dir.join("./tests/root_cert.der");
+    /// let swish_client = cert_path
+    ///     .into_os_string()
+    ///     .to_str()
+    ///     .and_then(|cert_path_string| {
+    ///         root_cert_path
+    ///             .into_os_string()
+    ///             .to_str()
+    ///             .map(|root_cert_path_string| {
+    ///                 SwishClient::new(
+    ///                     "1231181189",
+    ///                     cert_path_string,
+    ///                     root_cert_path_string,
+    ///                     "swish",
+    ///                     handle,
+    ///                 )
+    ///             })
+    ///     }).unwrap();
+    ///
     /// let payment_id = "111";
-    /// let payment = client.get_payment(payment_id.as_str())
+    /// let payment = swish_client.get_payment(payment_id);
     /// ```
     pub fn get_payment<'a>(&'a self, payment_id: &str) -> SwishBoxFuture<'a, Payment> {
         self.get(format!("paymentrequests/{}", payment_id).as_str())
     }
 
-    /// Creates a refund with the provided RefundParams.
-    /// Returns a Future with a CreatedRefund.
+    /// [`RefundParams`]: struct.RefundParams.html
+    /// [`CreatedRefund`]: struct.CreatedRefund.html
+    ///
+    /// Creates a refund with the provided [`RefundParams`].
+    ///
+    /// # Returns
+    /// A Future with a [`CreatedRefund`].
     ///
     /// # Arguments
     ///
-    /// * `params` - RefundParams
+    /// * `params` - [`RefundParams`].
     ///
     /// # Example
     ///
     /// ```
-    /// use swish::client::SwishClient;
+    /// extern crate tokio_core;
+    /// extern crate swish;
     ///
-    /// let mut refund_params = client::RefundParams::default();
+    /// use tokio_core::reactor::Core;
+    /// use std::env;
+    /// use swish::client::{RefundParams, SwishClient};
+    ///
+    /// let core = Core::new().unwrap();
+    /// let handle = core.handle();
+    /// let current_dir = env::current_dir().unwrap();
+    /// let cert_path = current_dir.join("./tests/test_cert.p12");
+    /// let root_cert_path = current_dir.join("./tests/root_cert.der");
+    /// let swish_client = cert_path
+    ///     .into_os_string()
+    ///     .to_str()
+    ///     .and_then(|cert_path_string| {
+    ///         root_cert_path
+    ///             .into_os_string()
+    ///             .to_str()
+    ///             .map(|root_cert_path_string| {
+    ///                 SwishClient::new(
+    ///                     "1231181189",
+    ///                     cert_path_string,
+    ///                     root_cert_path_string,
+    ///                     "swish",
+    ///                     handle,
+    ///                 )
+    ///             })
+    ///     }).unwrap();
+    ///
+    /// let mut refund_params = RefundParams::default();
     /// refund_params.amount = 100.00;
     /// refund_params.callback_url = "https://example.com/api/swishcb/refunds";
-    /// refund_params.original_payment_reference = payment_reference.as_str();
     /// refund_params.payer_payment_reference = Some("0123456789");
     /// refund_params.message = Some("Refund for Kingston USB Flash Drive 8 GB");
     ///
-    /// let refund = client.create_refund(refund_params);
+    /// let refund = swish_client.create_refund(refund_params);
     /// ```
     pub fn create_refund<'a>(&'a self, params: RefundParams) -> SwishBoxFuture<'a, CreatedRefund> {
         let refund_params = RefundParams {
@@ -370,7 +450,7 @@ impl SwishClient {
         let response = self.post::<CreatedRefund, RefundParams>("refunds", refund_params);
 
         let refund_future = response.and_then(move |(_, headers)| {
-            let location = get_header_as_string::<LocationHeader>(&headers);
+            let location = get_header_as_string(&headers, &LOCATION);
 
             let refund = location.and_then(|location| {
                 self.get_payment_id_from_location(location.to_owned())
@@ -387,8 +467,12 @@ impl SwishClient {
         Box::new(refund_future)
     }
 
-    /// Gets a refund for a given refund_id.
-    /// Returns a Future with a Refund.
+    /// [`Refund`]: struct.Refund.html
+    ///
+    /// Gets a refund for a given `refund_id`.
+    ///
+    /// # Returns
+    /// A Future with a [`Refund`].
     ///
     /// # Arguments
     ///
@@ -397,10 +481,38 @@ impl SwishClient {
     /// # Example
     ///
     /// ```
+    /// extern crate tokio_core;
+    /// extern crate swish;
+    ///
+    /// use tokio_core::reactor::Core;
+    /// use std::env;
     /// use swish::client::SwishClient;
     ///
+    /// let core = Core::new().unwrap();
+    /// let handle = core.handle();
+    /// let current_dir = env::current_dir().unwrap();
+    /// let cert_path = current_dir.join("./tests/test_cert.p12");
+    /// let root_cert_path = current_dir.join("./tests/root_cert.der");
+    /// let swish_client = cert_path
+    ///     .into_os_string()
+    ///     .to_str()
+    ///     .and_then(|cert_path_string| {
+    ///         root_cert_path
+    ///             .into_os_string()
+    ///             .to_str()
+    ///             .map(|root_cert_path_string| {
+    ///                 SwishClient::new(
+    ///                     "1231181189",
+    ///                     cert_path_string,
+    ///                     root_cert_path_string,
+    ///                     "swish",
+    ///                     handle,
+    ///                 )
+    ///             })
+    ///     }).unwrap();
+    ///
     /// let refund_id = "111";
-    /// let refund = client.get_refund(refund_id.as_str())
+    /// let refund = swish_client.get_refund(refund_id);
     /// ```
     pub fn get_refund<'a>(&'a self, refund_id: &str) -> SwishBoxFuture<'a, Refund> {
         self.get(format!("refunds/{}", refund_id).as_str())
@@ -420,32 +532,34 @@ impl SwishClient {
     }
 
     /// Build a HTTPS client with the root_cert and the client_cert.
-    /// Returns a Result that contains the client if it succeeded.
+    /// # Returns
+    /// A Result that contains the client if it succeeded.
     fn build_client(
         &self,
     ) -> Result<HttpClient<HttpsConnector<HttpConnector>, Body>, Box<error::Error>> {
-        let root_cert = Certificate::from_der(&self.read_cert(&self.root_cert_path)?)?;
-        let client_cert = Pkcs12::from_der(&self.read_cert(&self.cert_path)?, &self.passphrase)?;
+        let _root_cert = Certificate::from_der(&self.read_cert(&self.root_cert_path)?)?;
+        let pkcs12_cert = &self.read_cert(&self.cert_path)?;
+        let client_cert = Identity::from_pkcs12(&pkcs12_cert, &self.passphrase)?;
 
-        let mut builder = try!(TlsConnector::builder());
-        try!(builder.add_root_certificate(root_cert));
-        try!(builder.identity(client_cert));
-        let built_connector: TlsConnector = try!(builder.build());
+        let tls_connector = TlsConnector::builder()
+            //.add_root_certificate(root_cert)
+            .identity(client_cert)
+            .build()?;
 
-        let mut http_connector = HttpConnector::new(4, &self.handle);
+        let mut http_connector = HttpConnector::new(4);
         http_connector.enforce_http(false);
 
-        let https_connector = HttpsConnector::from((http_connector, built_connector));
+        let https_connector = HttpsConnector::from((http_connector, tls_connector));
 
-        let client = HttpClient::configure()
-            .connector(https_connector)
-            .build(&self.handle);
+        let client = hyper::client::Client::builder().build(https_connector);
 
         Ok(client)
     }
 
     /// Performs a http POST request to the Swish API.
-    /// Returns a Future with a Tuple that contains the body as a String
+    ///
+    /// # Returns
+    /// A Future with a Tuple that contains the body as a String
     /// and the Response headers.
     ///
     /// # Arguments
@@ -456,33 +570,33 @@ impl SwishClient {
         &'a self,
         path: &str,
         params: P,
-    ) -> SwishBoxFuture<'a, (String, hyper::Headers)>
+    ) -> SwishBoxFuture<'a, (String, hyper::header::HeaderMap)>
     where
         T: DeserializeOwned + fmt::Debug,
         P: Serialize,
     {
-        let future_result: Result<_, SwishClientError> = self.get_uri(path)
+        let future_result: Result<_, SwishClientError> = self
+            .get_uri(path)
             .and_then(|uri| {
                 serde_json::to_string(&params)
                     .and_then(|json_params| {
-                        let mut request = Request::new(Method::Post, uri.clone());
-                        request.headers_mut().set(ContentType::json());
+                        let mut request = Request::post(uri.to_owned())
+                            .body(Body::from(json_params))
+                            .unwrap();
                         request
                             .headers_mut()
-                            .set(ContentLength(json_params.len() as u64));
-                        request.set_body(json_params.clone());
+                            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-                        println!("Posting JSON: {:?} at URI: {:?}", json_params, uri);
                         Ok(self.perform_swish_api_request(request))
-                    })
-                    .map_err(SwishClientError::from)
-            })
-            .and_then(|future| Ok(future));
+                    }).map_err(SwishClientError::from)
+            }).and_then(|future| Ok(future));
         Box::new(future::result(future_result).flatten())
     }
 
     /// Performs a http GET request to the Swish API.
-    /// Returns a Future with a Tuple that contains the body as a String
+    ///
+    /// # Returns
+    /// A Future with a Tuple that contains the body as a String
     /// and the Response headers.
     ///
     /// # Arguments
@@ -493,15 +607,15 @@ impl SwishClient {
         T: DeserializeOwned + fmt::Debug,
     {
         let uri = self.get_uri(path).unwrap();
-        let request = Request::new(Method::Get, uri.clone());
+        let request = Request::get(uri).body(Body::empty()).unwrap();
 
-        println!("Getting URI: {:?}", uri);
-        let future = self.perform_swish_api_request(request)
+        let future = self
+            .perform_swish_api_request(request)
             .and_then(move |(body, _)| future::result(self.parse_body::<T>(&body)));
         Box::new(future)
     }
 
-    /// Parse a body as json.
+    /// Parse body as json.
     ///
     /// # Arguments
     ///
@@ -535,30 +649,34 @@ impl SwishClient {
     }
 
     /// Performs the actual request to the Swish API.
-    /// Returns a Future with a Tuple that contains the body as a String
+    /// # Returns
+    /// A Future with a Tuple that contains the body as a String
     /// and the Response headers.
     fn perform_swish_api_request<'a>(
         &'a self,
-        request: Request,
-    ) -> SwishBoxFuture<'a, (String, hyper::Headers)> {
-        let client = self.build_client()
+        request: Request<hyper::Body>,
+    ) -> SwishBoxFuture<'a, (String, hyper::HeaderMap)> {
+        let client = self
+            .build_client()
             .expect("The HttpsClient couldn't be built, the certificate is probably wrong");
+
         let future = client
             .request(request)
             .map_err(|err| SwishClientError::from(err))
             .and_then(move |response| {
                 let status = response.status();
-                let headers = response.headers().clone();
+                let headers = response.headers().to_owned();
 
                 response
-                    .body()
+                    .into_body()
                     .concat2()
                     .map_err(|err| SwishClientError::from(err))
                     .and_then(move |body| {
                         let body = str::from_utf8(&body).unwrap();
-                        if status == StatusCode::NotFound {
+
+                        if status == StatusCode::NOT_FOUND {
                             let error = RequestError {
-                                http_status: StatusCode::NotFound,
+                                http_status: StatusCode::NOT_FOUND,
                                 code: None,
                                 additional_information: None,
                                 message: body.to_owned(),
@@ -572,7 +690,8 @@ impl SwishClient {
                             let errors: SwishClientError =
                                 match serde_json::from_str::<serde_json::Value>(body) {
                                     Ok(json) => {
-                                        let errors: Vec<_> = json.as_array()
+                                        let errors: Vec<_> = json
+                                            .as_array()
                                             .into_iter()
                                             .flat_map(|e| {
                                                 e.iter()
@@ -580,15 +699,12 @@ impl SwishClient {
                                                         serde_json::from_value::<RequestError>(
                                                             err.clone(),
                                                         )
-                                                    })
-                                                    .map(|request_error| RequestError {
-                                                        http_status_code: status,
+                                                    }).map(|request_error| RequestError {
+                                                        http_status: status,
                                                         ..request_error
-                                                    })
-                                                    .map(SwishClientError::from)
+                                                    }).map(SwishClientError::from)
                                                     .collect::<Vec<SwishClientError>>()
-                                            })
-                                            .collect();
+                                            }).collect();
                                         SwishClientError::from(errors)
                                     }
                                     Err(err) => {
@@ -615,6 +731,11 @@ impl SwishClient {
 /// # Arguments
 ///
 /// * `headers` - hyper::Headers
-fn get_header_as_string<T: Header + fmt::Display>(headers: &hyper::Headers) -> Option<String> {
-    headers.get::<T>().map(|h| h.to_string())
+fn get_header_as_string(
+    headers: &hyper::header::HeaderMap,
+    header: &hyper::header::HeaderName,
+) -> Option<String> {
+    headers
+        .get(header)
+        .and_then(|h| h.to_str().ok().map(|h| h.to_string()))
 }

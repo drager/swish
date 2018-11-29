@@ -29,8 +29,7 @@ fn get_client_and_core() -> Result<(client::SwishClient, Core), error::SwishClie
                         handle,
                     )
                 })
-        })
-        .unwrap();
+        }).unwrap();
 
     Ok((swish_client, core))
 }
@@ -193,7 +192,7 @@ fn test_get_refund() {
     assert_eq!(ok_refund.currency, client::Currency::SEK);
     assert!(ok_refund.status.is_some());
     let ok_status = ok_refund.status.unwrap();
-    assert_eq!(ok_status, client::Status::Validated);
+    assert_eq!(ok_status, client::Status::Initiated);
     assert_eq!(ok_refund.date_created.is_empty(), false);
     assert!(ok_refund.message.is_some());
     let ok_message = ok_refund.message.unwrap();

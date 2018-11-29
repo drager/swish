@@ -1,17 +1,21 @@
+//! # The error module
+//!
+//! Contains all the errors that can occur.
+//!
 extern crate hyper;
 extern crate serde_json;
 
+use hyper::http::uri;
 use std::fmt;
 use std::io;
 
 pub type ErrorCollection = Vec<SwishClientError>;
-
 #[derive(Debug)]
 pub enum SwishClientError {
     Swish(RequestError),
     Parse(String),
     Http(hyper::Error),
-    Uri(hyper::error::UriError),
+    Uri(uri::InvalidUri),
     Io(io::Error),
     Json(serde_json::Error),
     ErrorCollection(ErrorCollection),
@@ -54,8 +58,8 @@ impl From<hyper::Error> for SwishClientError {
     }
 }
 
-impl From<hyper::error::UriError> for SwishClientError {
-    fn from(err: hyper::error::UriError) -> SwishClientError {
+impl From<uri::InvalidUri> for SwishClientError {
+    fn from(err: uri::InvalidUri) -> SwishClientError {
         SwishClientError::Uri(err)
     }
 }
