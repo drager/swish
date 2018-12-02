@@ -1,0 +1,19 @@
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+matrix:
+  allow_failures:
+    - rust: nightly
+  fast_finish: true
+  include:
+    - name: tests
+      env: RUST_BACKTRACE=1
+      script:
+      - cargo test --locked
+      - rustup component add rustfmt-preview
+      - rustup component add clippy-preview
+      - cargo fmt --all -- --check
+      - cargo clippy
+cache: cargo
