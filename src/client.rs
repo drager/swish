@@ -178,7 +178,7 @@ pub struct Refund {
 }
 
 /// Custom Header returned by the Swish API.
-const PAYMENT_REQUEST_TOKEN: &'static str = "paymentrequesttoken";
+const PAYMENT_REQUEST_TOKEN: &str = "paymentrequesttoken";
 
 /// Type alias for Future used within the SwishClient
 type SwishBoxFuture<'a, T> = Box<Future<Item = T, Error = SwishClientError> + 'a>;
@@ -243,7 +243,7 @@ impl SwishClient {
             passphrase: passphrase.to_owned(),
             cert_path: cert_path.to_owned(),
             root_cert_path: root_cert_path.to_owned(),
-            handle: handle,
+            handle,
         }
     }
 
@@ -315,14 +315,14 @@ impl SwishClient {
             self.post::<CreatedPayment, PaymentParams>("paymentrequests", payment_params);
 
         let payment_future = response.and_then(move |(_, headers)| {
-            let location = get_header_as_string(&headers, &LOCATION);
+            let location = get_header_as_string(&headers, LOCATION);
             let request_token = get_header_as_string(
                 &headers,
-                &header::HeaderName::from_static(PAYMENT_REQUEST_TOKEN),
+                header::HeaderName::from_static(PAYMENT_REQUEST_TOKEN),
             );
 
             let payment = location.and_then(|location| {
-                self.get_payment_id_from_location(location.to_owned())
+                self.get_payment_id_from_location(&location)
                     .map(|payment_id| CreatedPayment {
                         id: payment_id,
                         request_token,
@@ -330,9 +330,7 @@ impl SwishClient {
                     })
             });
 
-            future::result(
-                serde_json::from_value(json!(payment)).map_err(|err| SwishClientError::from(err)),
-            )
+            future::result(serde_json::from_value(json!(payment)).map_err(SwishClientError::from))
         });
         Box::new(payment_future)
     }
@@ -450,19 +448,17 @@ impl SwishClient {
         let response = self.post::<CreatedRefund, RefundParams>("refunds", refund_params);
 
         let refund_future = response.and_then(move |(_, headers)| {
-            let location = get_header_as_string(&headers, &LOCATION);
+            let location = get_header_as_string(&headers, LOCATION);
 
             let refund = location.and_then(|location| {
-                self.get_payment_id_from_location(location.to_owned())
+                self.get_payment_id_from_location(&location)
                     .map(|refund_id| CreatedRefund {
                         id: refund_id,
-                        location: location,
+                        location,
                     })
             });
 
-            future::result(
-                serde_json::from_value(json!(refund)).map_err(|err| SwishClientError::from(err)),
-            )
+            future::result(serde_json::from_value(json!(refund)).map_err(SwishClientError::from))
         });
         Box::new(refund_future)
     }
@@ -589,7 +585,7 @@ impl SwishClient {
 
                         Ok(self.perform_swish_api_request(request))
                     }).map_err(SwishClientError::from)
-            }).and_then(|future| Ok(future));
+            }).and_then(Ok);
         Box::new(future::result(future_result).flatten())
     }
 
@@ -624,7 +620,7 @@ impl SwishClient {
     where
         T: DeserializeOwned + fmt::Debug,
     {
-        serde_json::from_str(&body).map_err(|err| SwishClientError::from(err))
+        serde_json::from_str(&body).map_err(SwishClientError::from)
     }
 
     /// Parse a given string path into an Uri.
@@ -635,7 +631,7 @@ impl SwishClient {
     fn get_uri(&self, path: &str) -> Result<Uri, SwishClientError> {
         format!("{}{}", self.swish_api_url, path)
             .parse::<Uri>()
-            .map_err(|err| SwishClientError::from(err))
+            .map_err(SwishClientError::from)
     }
 
     /// Gets a payment_id from a given location header string.
@@ -643,7 +639,7 @@ impl SwishClient {
     /// # Arguments
     ///
     /// * `location` - A string location header
-    fn get_payment_id_from_location(&self, location: String) -> Option<String> {
+    fn get_payment_id_from_location(&self, location: &str) -> Option<String> {
         let payment_id: Vec<&str> = location.split('/').collect();
         payment_id.last().cloned().map(|id| id.to_string())
     }
@@ -662,7 +658,7 @@ impl SwishClient {
 
         let future = client
             .request(request)
-            .map_err(|err| SwishClientError::from(err))
+            .map_err(SwishClientError::from)
             .and_then(move |response| {
                 let status = response.status();
                 let headers = response.headers().to_owned();
@@ -670,7 +666,7 @@ impl SwishClient {
                 response
                     .into_body()
                     .concat2()
-                    .map_err(|err| SwishClientError::from(err))
+                    .map_err(SwishClientError::from)
                     .and_then(move |body| {
                         let body = str::from_utf8(&body).unwrap();
 
@@ -733,7 +729,7 @@ impl SwishClient {
 /// * `headers` - hyper::Headers
 fn get_header_as_string(
     headers: &hyper::header::HeaderMap,
-    header: &hyper::header::HeaderName,
+    header: hyper::header::HeaderName,
 ) -> Option<String> {
     headers
         .get(header)
