@@ -10,6 +10,7 @@ use std::fmt;
 use std::io;
 
 pub type ErrorCollection = Vec<SwishClientError>;
+
 #[derive(Debug)]
 pub enum SwishClientError {
     Swish(RequestError),
@@ -78,35 +79,35 @@ impl From<serde_json::Error> for SwishClientError {
 
 #[derive(Debug, Deserialize, Clone)]
 pub enum ErrorCode {
-    // PayeePaymentReference is invalid.
+    /// PayeePaymentReference is invalid.
     FF08,
-    // Callback URL is missing or does not use Https.
+    /// Callback URL is missing or does not use Https.
     RP03,
-    // Payer alias is invalid.
+    /// Payer alias is invalid.
     BE18,
-    // Payee alias is missing or empty.
+    /// Payee alias is missing or empty.
     RP01,
-    // Amount value is missing or not a valid number.
+    /// Amount value is missing or not a valid number.
     PA02,
-    // Amount value is too low.
+    /// Amount value is too low.
     AM06,
-    // Amount value is too large.
+    /// Amount value is too large.
     AM02,
-    // Invalid or missing Currency.
+    /// Invalid or missing Currency.
     AM03,
-    // Wrong formatted message.
+    /// Wrong formatted message.
     RP02,
-    // Another active PaymentRequest already exists for this payerAlias. Only applicable for E-Commerce.
+    /// Another active PaymentRequest already exists for this payerAlias. Only applicable for E-Commerce.
     RP06,
-    // Payer not Enrolled.
+    /// Payer not Enrolled.
     ACMT03,
-    // Counterpart is not activated.
+    /// Counterpart is not activated.
     ACMT01,
-    // Payee not Enrolled.
+    /// Payee not Enrolled.
     ACMT07,
-    // Parameter is not correct.
+    /// Parameter is not correct.
     PA01,
-    // Original Payment not found or original payment is more than than 13 months old
+    /// Original Payment not found or original payment is more than than 13 months old.
     RF02,
 }
 
