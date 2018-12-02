@@ -1,4 +1,8 @@
 # Swish
+[![Build Status](https://travis-ci.org/drager/swish.svg?branch=master)](https://travis-ci.org/drager/swish)
+[![crates.io](https://img.shields.io/crates/v/swish-api.svg)](https://crates.io/crates/swish-api)
+[![API docs](https://docs.rs/swish-api/badge.svg)](https://docs.rs/swish-api)
+[![MIT/Apache-2.0 licensed](https://img.shields.io/crates/l/swish-api.svg)](https://github.com/drager/swish/tree/master/README.md#license)
 
 Rust API bindings for the Swish API.
 Built using [hyper](https://github.com/hyperium/hyper/) and [tokio](https://github.com/tokio-rs/tokio).
