@@ -11,7 +11,7 @@ use hyper::Client as HttpClient;
 use hyper::StatusCode;
 use hyper::{self, Body, Request, Uri};
 use hyper_tls::HttpsConnector;
-use native_tls::{Certificate, Identity, TlsConnector};
+use native_tls::{Identity, TlsConnector};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json;
@@ -31,7 +31,6 @@ pub struct SwishClient {
     swish_api_url: String,
     passphrase: String,
     cert_path: String,
-    root_cert_path: String,
     handle: Handle,
 }
 
@@ -192,7 +191,6 @@ impl SwishClient {
     ///
     /// * `merchant_swish_number` - The merchants swish number which will receive the payments.
     /// * `cert_path` - The path to the certificate.
-    /// * `root_cert_path` - The path to the root certificate.
     /// * `passphrase` - The passphrase to the certificate.
     /// * `handle` - A tokio reactor handle.
     ///
@@ -213,27 +211,16 @@ impl SwishClient {
     /// let handle = core.handle();
     /// let current_dir = env::current_dir().unwrap();
     /// let cert_path = current_dir.join("./certs/test_cert.p12");
-    /// let root_cert_path = current_dir.join("./certs/root_cert.der");
     /// let swish_client = cert_path
-    ///     .into_os_string()
-    ///     .to_str()
-    ///     .and_then(|cert_path_string| {
-    ///         root_cert_path
-    ///             .into_os_string()
-    ///             .to_str()
-    ///             .map(|root_cert_path_string| {
-    ///                      SwishClient::new("1231181189",
-    ///                                               cert_path_string,
-    ///                                               root_cert_path_string,
-    ///                                               "passphrase",
-    ///                                               handle)
-    ///                  })
-    ///     });
+    ///    .into_os_string()
+    ///    .to_str()
+    ///    .map(|cert_path_string| {
+    ///        SwishClient::new("1231181189", cert_path_string, "swish", handle)
+    ///    }).unwrap();
     /// ```
     pub fn new(
         merchant_swish_number: &str,
         cert_path: &str,
-        root_cert_path: &str,
         passphrase: &str,
         handle: Handle,
     ) -> Self {
@@ -242,7 +229,6 @@ impl SwishClient {
             swish_api_url: "https://mss.cpc.getswish.net/swish-cpcapi/api/v1/".to_owned(),
             passphrase: passphrase.to_owned(),
             cert_path: cert_path.to_owned(),
-            root_cert_path: root_cert_path.to_owned(),
             handle,
         }
     }
@@ -275,22 +261,11 @@ impl SwishClient {
     /// let cert_path = current_dir.join("./tests/test_cert.p12");
     /// let root_cert_path = current_dir.join("./tests/root_cert.der");
     /// let swish_client = cert_path
-    ///     .into_os_string()
-    ///     .to_str()
-    ///     .and_then(|cert_path_string| {
-    ///         root_cert_path
-    ///             .into_os_string()
-    ///             .to_str()
-    ///             .map(|root_cert_path_string| {
-    ///                 SwishClient::new(
-    ///                     "1231181189",
-    ///                     cert_path_string,
-    ///                     root_cert_path_string,
-    ///                     "swish",
-    ///                     handle,
-    ///                 )
-    ///             })
-    ///     }).unwrap();
+    ///    .into_os_string()
+    ///    .to_str()
+    ///    .map(|cert_path_string| {
+    ///        SwishClient::new("1231181189", cert_path_string, "swish", handle)
+    ///    }).unwrap();
     ///
     /// let mut payment_params = PaymentParams::default();
     /// payment_params.amount = 100.00;
@@ -362,22 +337,11 @@ impl SwishClient {
     /// let cert_path = current_dir.join("./tests/test_cert.p12");
     /// let root_cert_path = current_dir.join("./tests/root_cert.der");
     /// let swish_client = cert_path
-    ///     .into_os_string()
-    ///     .to_str()
-    ///     .and_then(|cert_path_string| {
-    ///         root_cert_path
-    ///             .into_os_string()
-    ///             .to_str()
-    ///             .map(|root_cert_path_string| {
-    ///                 SwishClient::new(
-    ///                     "1231181189",
-    ///                     cert_path_string,
-    ///                     root_cert_path_string,
-    ///                     "swish",
-    ///                     handle,
-    ///                 )
-    ///             })
-    ///     }).unwrap();
+    ///    .into_os_string()
+    ///    .to_str()
+    ///    .map(|cert_path_string| {
+    ///        SwishClient::new("1231181189", cert_path_string, "swish", handle)
+    ///    }).unwrap();
     ///
     /// let payment_id = "111";
     /// let payment = swish_client.get_payment(payment_id);
@@ -414,22 +378,11 @@ impl SwishClient {
     /// let cert_path = current_dir.join("./tests/test_cert.p12");
     /// let root_cert_path = current_dir.join("./tests/root_cert.der");
     /// let swish_client = cert_path
-    ///     .into_os_string()
-    ///     .to_str()
-    ///     .and_then(|cert_path_string| {
-    ///         root_cert_path
-    ///             .into_os_string()
-    ///             .to_str()
-    ///             .map(|root_cert_path_string| {
-    ///                 SwishClient::new(
-    ///                     "1231181189",
-    ///                     cert_path_string,
-    ///                     root_cert_path_string,
-    ///                     "swish",
-    ///                     handle,
-    ///                 )
-    ///             })
-    ///     }).unwrap();
+    ///    .into_os_string()
+    ///    .to_str()
+    ///    .map(|cert_path_string| {
+    ///        SwishClient::new("1231181189", cert_path_string, "swish", handle)
+    ///    }).unwrap();
     ///
     /// let mut refund_params = RefundParams::default();
     /// refund_params.amount = 100.00;
@@ -490,22 +443,11 @@ impl SwishClient {
     /// let cert_path = current_dir.join("./tests/test_cert.p12");
     /// let root_cert_path = current_dir.join("./tests/root_cert.der");
     /// let swish_client = cert_path
-    ///     .into_os_string()
-    ///     .to_str()
-    ///     .and_then(|cert_path_string| {
-    ///         root_cert_path
-    ///             .into_os_string()
-    ///             .to_str()
-    ///             .map(|root_cert_path_string| {
-    ///                 SwishClient::new(
-    ///                     "1231181189",
-    ///                     cert_path_string,
-    ///                     root_cert_path_string,
-    ///                     "swish",
-    ///                     handle,
-    ///                 )
-    ///             })
-    ///     }).unwrap();
+    ///    .into_os_string()
+    ///    .to_str()
+    ///    .map(|cert_path_string| {
+    ///        SwishClient::new("1231181189", cert_path_string, "swish", handle)
+    ///    }).unwrap();
     ///
     /// let refund_id = "111";
     /// let refund = swish_client.get_refund(refund_id);
@@ -533,14 +475,10 @@ impl SwishClient {
     fn build_client(
         &self,
     ) -> Result<HttpClient<HttpsConnector<HttpConnector>, Body>, Box<error::Error>> {
-        let _root_cert = Certificate::from_der(&self.read_cert(&self.root_cert_path)?)?;
         let pkcs12_cert = &self.read_cert(&self.cert_path)?;
         let client_cert = Identity::from_pkcs12(&pkcs12_cert, &self.passphrase)?;
 
-        let tls_connector = TlsConnector::builder()
-            //.add_root_certificate(root_cert)
-            .identity(client_cert)
-            .build()?;
+        let tls_connector = TlsConnector::builder().identity(client_cert).build()?;
 
         let mut http_connector = HttpConnector::new(4);
         http_connector.enforce_http(false);

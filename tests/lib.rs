@@ -12,23 +12,11 @@ fn get_client_and_core() -> Result<(client::SwishClient, Core), error::SwishClie
     let handle = core.handle();
     let current_dir = env::current_dir()?;
     let cert_path = current_dir.join("./tests/test_cert.p12");
-    let root_cert_path = current_dir.join("./tests/root_cert.der");
     let swish_client = cert_path
         .into_os_string()
         .to_str()
-        .and_then(|cert_path_string| {
-            root_cert_path
-                .into_os_string()
-                .to_str()
-                .map(|root_cert_path_string| {
-                    client::SwishClient::new(
-                        "1231181189",
-                        cert_path_string,
-                        root_cert_path_string,
-                        "swish",
-                        handle,
-                    )
-                })
+        .map(|cert_path_string| {
+            client::SwishClient::new("1231181189", cert_path_string, "swish", handle)
         }).unwrap();
 
     Ok((swish_client, core))
