@@ -12,10 +12,10 @@ Built using [hyper](https://github.com/hyperium/hyper/) and [tokio](https://gith
 A simple usage example:
 
 ```rust
-extern crate swish;
+extern crate swish_api;
 extern crate tokio_core;
 
-use swish::{client, error};
+use swish_api::{client, error};
 use tokio_core::reactor::Core;
 
 fn main() {
@@ -23,27 +23,13 @@ fn main() {
     let handle = core.handle();
     let current_dir = env::current_dir()?;
     let cert_path = current_dir.join("./test_cert.p12");
-    let root_cert_path = current_dir.join("./root_cert.der");
 
     let swish_client = cert_path
         .into_os_string()
         .to_str()
-        .and_then(|cert_path_string| {
-            root_cert_path
-                .into_os_string()
-                .to_str()
-                .map(|root_cert_path_string| {
-                    client::SwishClient::new(
-                        "1231181189",
-                        cert_path_string,
-                        root_cert_path_string,
-                        "swish",
-                        handle,
-                    )
-                })
-        })
-        .unwrap();
-
+        .map(|cert_path_string| {
+            client::SwishClient::new("1231181189", cert_path_string, "swish", handle)
+        }).unwrap();
 
     let mut payment_params = client::PaymentParams::default();
     payment_params.amount = 100.00;
