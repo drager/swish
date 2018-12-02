@@ -11,7 +11,7 @@ matrix:
     - name: tests
       env: RUST_BACKTRACE=1
       script:
-      - cargo test --locked
+      - cargo test
       - rustup component add rustfmt-preview
       - rustup component add clippy-preview
       - cargo fmt --all -- --check
