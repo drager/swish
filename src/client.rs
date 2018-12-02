@@ -201,9 +201,9 @@ impl SwishClient {
     ///
     /// ```
     /// extern crate tokio_core;
-    /// extern crate swish;
+    /// extern crate swish_api;
     ///
-    /// use swish::client::SwishClient;
+    /// use swish_api::client::SwishClient;
     /// use tokio_core::reactor::Core;
     /// use std::env;
     ///
@@ -249,11 +249,11 @@ impl SwishClient {
     ///
     /// ```
     /// extern crate tokio_core;
-    /// extern crate swish;
+    /// extern crate swish_api;
     ///
     /// use tokio_core::reactor::Core;
     /// use std::env;
-    /// use swish::client::{PaymentParams, SwishClient};
+    /// use swish_api::client::{PaymentParams, SwishClient};
     ///
     /// let core = Core::new().unwrap();
     /// let handle = core.handle();
@@ -325,11 +325,11 @@ impl SwishClient {
     ///
     /// ```
     /// extern crate tokio_core;
-    /// extern crate swish;
+    /// extern crate swish_api;
     ///
     /// use tokio_core::reactor::Core;
     /// use std::env;
-    /// use swish::client::SwishClient;
+    /// use swish_api::client::SwishClient;
     ///
     /// let core = Core::new().unwrap();
     /// let handle = core.handle();
@@ -366,11 +366,11 @@ impl SwishClient {
     ///
     /// ```
     /// extern crate tokio_core;
-    /// extern crate swish;
+    /// extern crate swish_api;
     ///
     /// use tokio_core::reactor::Core;
     /// use std::env;
-    /// use swish::client::{RefundParams, SwishClient};
+    /// use swish_api::client::{RefundParams, SwishClient};
     ///
     /// let core = Core::new().unwrap();
     /// let handle = core.handle();
@@ -431,11 +431,11 @@ impl SwishClient {
     ///
     /// ```
     /// extern crate tokio_core;
-    /// extern crate swish;
+    /// extern crate swish_api;
     ///
     /// use tokio_core::reactor::Core;
     /// use std::env;
-    /// use swish::client::SwishClient;
+    /// use swish_api::client::SwishClient;
     ///
     /// let core = Core::new().unwrap();
     /// let handle = core.handle();

@@ -1,10 +1,9 @@
-extern crate swish;
+extern crate swish_api;
 extern crate tokio_core;
 
 use std::env;
 use std::{thread, time};
-use swish::client;
-use swish::error;
+use swish_api::{client, error};
 use tokio_core::reactor::Core;
 
 fn get_client_and_core() -> Result<(client::SwishClient, Core), error::SwishClientError> {
